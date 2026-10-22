@@ -1,0 +1,5 @@
+condition,total,scored,missing,strict_successes,strict_sar_pct,normalized_score_pct,coverage_pct
+Base | system prompt,35,35,0,31,88.57142857142857,90.0,100
+DPO Tutor | system prompt,35,35,0,34,97.14285714285714,97.14285714285714,100
+Base | no system prompt,35,35,0,2,5.714285714285714,7.142857142857143,100
+DPO Tutor | no system prompt,35,35,0,2,5.714285714285714,10.0,100
