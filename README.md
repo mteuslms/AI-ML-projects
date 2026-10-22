@@ -1,7 +1,7 @@
 # AI & Machine Learning Portfolio 
 
 **Mateus Silvestre**  
-*M.S. in Artificial Intelligence @ University of South Florida (Expected Spring 2027)*  
+*M.S. in Artificial Intelligence @ University of South Florida (Expected Spring 2028)*  
 
 ## Overview
 This repository contains a curated collection of my machine learning engineering and AI research projects. My work primarily focuses on large language models, cognitive modeling, and efficient model fine-tuning architectures.
