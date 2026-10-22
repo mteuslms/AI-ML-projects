@@ -1,0 +1,7 @@
+socratic_tutor_run/
+socratic_data*.jsonl
+.env
+__pycache__/
+.ipynb_checkpoints/
+*.gguf
+*.safetensors
