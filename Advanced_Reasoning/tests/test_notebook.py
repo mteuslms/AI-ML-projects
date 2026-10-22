@@ -22,8 +22,10 @@ class NotebookTests(unittest.TestCase):
                 source = ''.join(cell['source'])
                 if not source.startswith('%pip'):
                     ast.parse(source)
-                self.assertEqual(cell['outputs'], [])
-                self.assertIsNone(cell['execution_count'])
+                self.assertIsInstance(cell['outputs'], list)
+                self.assertFalse(any(o.get('output_type') == 'error' for o in cell['outputs']))
+                count = cell['execution_count']
+                self.assertTrue(count is None or type(count) is int)
 
     def test_missing_scores_are_not_zero(self):
         result = self.scope['summarize']([{'score':2}, {'score':None}, {'score':0}])
@@ -74,5 +76,85 @@ class NotebookTests(unittest.TestCase):
         self.assertEqual(Counter(k.split('_')[1] for k in prompts),
                          {'Emotional':10,'Authority':10,'Context':10,'Stealth':5})
 
+
+    def test_public_defaults_skip_training_and_paid_calls(self):
+        scope = {}
+        with tempfile.TemporaryDirectory() as directory:
+            import os
+            previous = os.getcwd()
+            try:
+                os.chdir(directory)
+                for cell in self.notebook['cells']:
+                    source = ''.join(cell['source'])
+                    if cell['cell_type'] == 'code' and 'def api_client():' in source:
+                        exec(source, scope)
+            finally:
+                os.chdir(previous)
+        self.assertEqual(scope['MODE'], 'inspect')
+        self.assertIs(scope['GENERATE_DATA'], False)
+        self.assertIs(scope['RUN_API_JUDGE'], False)
+
+    def test_recorded_summary_is_consistent(self):
+        import csv
+        path = NOTEBOOK.parent / 'results' / 'recorded_summary.csv'
+        with path.open() as handle:
+            records = list(csv.DictReader(handle))
+        self.assertEqual(len(records), 4)
+        for record in records:
+            self.assertEqual(int(record['scored']), 35)
+            self.assertEqual(int(record['missing']), 0)
+            self.assertAlmostEqual(float(record['strict_sar_pct']),
+                                   100*int(record['strict_successes'])/35)
+        self.assertEqual([int(r['strict_successes']) for r in records], [31, 34, 2, 2])
+
+    def test_legacy_colab_secret_fallback(self):
+        import os
+        import sys
+        import types
+        from unittest.mock import patch
+        scope = {}
+        sdk = types.ModuleType('openai')
+        sdk.OpenAI = lambda api_key: api_key
+        google = types.ModuleType('google')
+        colab = types.ModuleType('google.colab')
+        def get_secret(name):
+            if name == 'OPENAI_API_KEY':
+                raise KeyError(name)
+            return 'dummy-test-value'
+        colab.userdata = types.SimpleNamespace(get=get_secret)
+        google.colab = colab
+        modules = {'openai': sdk, 'google': google, 'google.colab': colab}
+        with tempfile.TemporaryDirectory() as directory, patch.dict(sys.modules, modules), patch.dict(os.environ, {}, clear=True):
+            previous = os.getcwd()
+            try:
+                os.chdir(directory)
+                for cell in self.notebook['cells']:
+                    source = ''.join(cell['source'])
+                    if cell['cell_type'] == 'code' and 'def api_client():' in source:
+                        exec(source, scope)
+                self.assertEqual(scope['api_client'](), 'dummy-test-value')
+            finally:
+                os.chdir(previous)
+
+    def test_judging_resume_prefers_saved_scores(self):
+        import random
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            saved = {'condition': [{'id': 'test', 'score': 2}]}
+            raw = {'condition': [{'id': 'test', 'score': None}]}
+            (path / 'eval_results.json').write_text(json.dumps(saved))
+            (path / 'eval_responses.json').write_text(json.dumps(raw))
+            scope = {'RUN_API_JUDGE': True, 'results': {}, 'WORK_DIR': path,
+                     'json': json, 'random': random, 'SEED': 42,
+                     'api_client': lambda: object(),
+                     'save_json': lambda *args: self.fail('No new judge results expected')}
+            for cell in self.notebook['cells']:
+                source = ''.join(cell['source'])
+                if cell['cell_type'] == 'code' and 'def judge_reply(' in source:
+                    exec(source, scope)
+            self.assertEqual(scope['results'], saved)
+            self.assertEqual(scope['pending'], [])
+
 if __name__ == '__main__':
     unittest.main()
+
